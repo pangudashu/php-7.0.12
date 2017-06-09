@@ -3682,6 +3682,59 @@ void zend_compile_throw(zend_ast *ast) /* {{{ */
 }
 /* }}} */
 
+//add by:pangudashu@gmail.com
+int zend_loop_get_depth_by_label(zend_string *label_name) /* {{{ */
+{
+    zval *label_zv;
+    zend_label *label;
+    zend_op *next_opline;
+ 
+    if(UNEXPECTED(CG(context).labels == NULL)){
+        zend_error_noreturn(E_COMPILE_ERROR, "can't find label:'%s' or it not mark a loop", ZSTR_VAL(label_name));
+    }
+
+    // 1) 查找label
+    label_zv = zend_hash_find(CG(context).labels, label_name);
+    if(UNEXPECTED(label_zv == NULL)){
+        zend_error_noreturn(E_COMPILE_ERROR, "can't find label:'%s' or it not mark a loop", ZSTR_VAL(label_name));
+    }
+    
+    label = (zend_label *)Z_PTR_P(label_zv);
+
+    // 2) 获取label下一条opcode
+    next_opline = &(CG(active_op_array)->opcodes[label->opline_num]);
+    if(UNEXPECTED(next_opline == NULL)){
+        zend_error_noreturn(E_COMPILE_ERROR, "can't find label:'%s' or it not mark a loop", ZSTR_VAL(label_name));
+    }
+
+    int label_brk_offset, curr_brk_offset; //标签标识的循环、break当前所在循环
+    int depth = 0; //break当前循环至标签循环的层级
+    zend_brk_cont_element *brk_cont_element;
+
+    if(next_opline->opcode == ZEND_NOP && next_opline->op1.var == -1){
+        label_brk_offset = next_opline->extended_value;
+        curr_brk_offset = CG(context).current_brk_cont;
+
+        brk_cont_element = &(CG(active_op_array)->brk_cont_array[curr_brk_offset]);
+
+        while(1){
+            depth++;
+            
+            if(label_brk_offset == curr_brk_offset){
+                return depth;
+            }
+
+            curr_brk_offset = brk_cont_element->parent;
+            if(curr_brk_offset < 0){
+                break;
+            }
+        }
+    }
+    
+    return -1;
+}
+/* }}} */
+
 void zend_compile_break_continue(zend_ast *ast) /* {{{ */
 {
 	zend_ast *depth_ast = ast->child[0];
@@ -3691,35 +3744,54 @@ void zend_compile_break_continue(zend_ast *ast) /* {{{ */
 
 	ZEND_ASSERT(ast->kind == ZEND_AST_BREAK || ast->kind == ZEND_AST_CONTINUE);
 
+    if (CG(context).current_brk_cont == -1) {
+		zend_error_noreturn(E_COMPILE_ERROR, "'%s' not in the 'loop' or 'switch' context",
+			ast->kind == ZEND_AST_BREAK ? "break" : "continue");
+	}
+
 	if (depth_ast) {
-		zval *depth_zv;
-		if (depth_ast->kind != ZEND_AST_ZVAL) {
-			zend_error_noreturn(E_COMPILE_ERROR, "'%s' operator with non-constant operand "
-				"is no longer supported", ast->kind == ZEND_AST_BREAK ? "break" : "continue");
-		}
+		
+        switch(depth_ast->kind){
+            case ZEND_AST_ZVAL: //break 数值;
+                {
+                    zval *depth_zv;
 
-		depth_zv = zend_ast_get_zval(depth_ast);
-		if (Z_TYPE_P(depth_zv) != IS_LONG || Z_LVAL_P(depth_zv) < 1) {
-			zend_error_noreturn(E_COMPILE_ERROR, "'%s' operator accepts only positive numbers",
-				ast->kind == ZEND_AST_BREAK ? "break" : "continue");
-		}
+                    depth_zv = zend_ast_get_zval(depth_ast);
+                    if (Z_TYPE_P(depth_zv) != IS_LONG || Z_LVAL_P(depth_zv) < 1) {
+                        zend_error_noreturn(E_COMPILE_ERROR, "'%s' operator accepts only positive numbers",
+                                ast->kind == ZEND_AST_BREAK ? "break" : "continue");
+                    }
 
-		depth = Z_LVAL_P(depth_zv);
+                    depth = Z_LVAL_P(depth_zv);
+                    break;
+                }
+            case ZEND_AST_CONST://break 标签;
+                {
+                    //获取label名称
+                    zend_string *label = zend_ast_get_str(depth_ast->child[0]);
+
+                    depth = zend_loop_get_depth_by_label(label);
+                    if(depth > 0){
+                        goto SET_OP;
+                    }
+                    break;
+                }
+            default:
+                zend_error_noreturn(E_COMPILE_ERROR, "'%s' operator with non-constant operand "
+                        "is no longer supported", ast->kind == ZEND_AST_BREAK ? "break" : "continue");
+        }
 	} else {
 		depth = 1;
 	}
 
-	if (CG(context).current_brk_cont == -1) {
-		zend_error_noreturn(E_COMPILE_ERROR, "'%s' not in the 'loop' or 'switch' context",
-			ast->kind == ZEND_AST_BREAK ? "break" : "continue");
-	} else {
-		if (!zend_handle_loops_and_finally_ex(depth)) {
-			zend_error_noreturn(E_COMPILE_ERROR, "Cannot '%s' %d level%s",
-				ast->kind == ZEND_AST_BREAK ? "break" : "continue",
-				depth, depth == 1 ? "" : "s");
-		}
-	}
-	opline = zend_emit_op(NULL, ast->kind == ZEND_AST_BREAK ? ZEND_BRK : ZEND_CONT, NULL, NULL);
+    if (!zend_handle_loops_and_finally_ex(depth)) {
+        zend_error_noreturn(E_COMPILE_ERROR, "Cannot '%s' %d level%s",
+                ast->kind == ZEND_AST_BREAK ? "break" : "continue",
+                depth, depth == 1 ? "" : "s");
+    }
+
+SET_OP:
+    opline = zend_emit_op(NULL, ast->kind == ZEND_AST_BREAK ? ZEND_BRK : ZEND_CONT, NULL, NULL);
 	opline->op1.num = CG(context).current_brk_cont;
 	opline->op2.num = depth;
 }
@@ -3899,6 +3971,12 @@ void zend_compile_for(zend_ast *ast) /* {{{ */
 
 	znode result;
 	uint32_t opnum_start, opnum_jmp, opnum_loop;
+    zend_op *mark_look_opline;
+   
+    //创建一条空opcode，用于标识接下来是一个循环结构
+    /* start */
+    mark_look_opline = zend_emit_op(NULL, ZEND_NOP, NULL, NULL);
+    /* end */
 
 	zend_compile_expr_list(&result, init_ast);
 	zend_do_free(&result);
@@ -3906,6 +3984,10 @@ void zend_compile_for(zend_ast *ast) /* {{{ */
 	opnum_jmp = zend_emit_jump(0);
 
 	zend_begin_loop(ZEND_NOP, NULL);
+
+    //保存当前循环的brk
+    mark_look_opline->op1.var = -1;
+    mark_look_opline->extended_value = CG(context).current_brk_cont;
 
 	opnum_start = get_next_op_number(CG(active_op_array));
 	zend_compile_stmt(stmt_ast);
