@@ -3726,9 +3726,13 @@ int zend_loop_get_depth_by_label(zend_string *label_name) /* {{{ */
 
             curr_brk_offset = brk_cont_element->parent;
             if(curr_brk_offset < 0){
-                break;
+                //label标识的不是break所在循环
+                zend_error_noreturn(E_COMPILE_ERROR, "can't break/conitnue label:'%s' because it not mark a loop", ZSTR_VAL(label_name));
             }
         }
+    }else{
+        //label没有标识一个循环
+        zend_error_noreturn(E_COMPILE_ERROR, "can't break/conitnue label:'%s' because it not mark a loop", ZSTR_VAL(label_name));
     }
     
     return -1;
