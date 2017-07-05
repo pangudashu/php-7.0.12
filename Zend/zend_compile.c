@@ -7141,6 +7141,17 @@ void zend_compile_top_stmt(zend_ast *ast) /* {{{ */
 }
 /* }}} */
 
+void zend_compile_defer_call(zend_ast *ast)
+{
+    if(!ast){
+        return;
+    }
+	zend_ast *call_ast = ast->child[0];
+
+    znode result;
+    zend_compile_var(&result, call_ast, BP_VAR_R);
+}
+
 void zend_compile_stmt(zend_ast *ast) /* {{{ */
 {
 	if (!ast) {
@@ -7240,6 +7251,9 @@ void zend_compile_stmt(zend_ast *ast) /* {{{ */
 		case ZEND_AST_HALT_COMPILER:
 			zend_compile_halt_compiler(ast);
 			break;
+        case ZEND_AST_DEFER_CALL:
+            zend_compile_defer_call(ast);
+            break;
 		default:
 		{
 			znode result;

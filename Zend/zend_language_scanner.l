@@ -1151,6 +1151,10 @@ NEWLINE ("\r"|"\n"|"\r\n")
 	RETURN_TOKEN(T_RETURN);
 }
 
+<ST_IN_SCRIPTING>"defer" {
+	RETURN_TOKEN(T_DEFER);
+}
+
 <ST_IN_SCRIPTING>"yield"{WHITESPACE}"from" {
 	HANDLE_NEWLINES(yytext, yyleng);
 	RETURN_TOKEN(T_YIELD_FROM);
