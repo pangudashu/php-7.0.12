@@ -356,8 +356,11 @@ struct _zend_op_array {
 
 	int last_brk_cont;
 	int last_try_catch;
+    int last_defer;
+    uint32_t defer_start_op;
 	zend_brk_cont_element *brk_cont_array;
 	zend_try_catch_element *try_catch_array;
+    zend_ast **defer_call_array;
 
 	/* static variables support */
 	HashTable *static_variables;
@@ -436,6 +439,7 @@ struct _zend_execute_data {
 	zend_class_entry    *called_scope;
 	zend_execute_data   *prev_execute_data;
 	zend_array          *symbol_table;
+    const zend_op       *return_opline;
 #if ZEND_EX_USE_RUN_TIME_CACHE
 	void               **run_time_cache;   /* cache op_array->run_time_cache */
 #endif
@@ -756,6 +760,8 @@ void init_op(zend_op *op);
 int get_next_op_number(zend_op_array *op_array);
 ZEND_API int pass_two(zend_op_array *op_array);
 zend_brk_cont_element *get_next_brk_cont_element(zend_op_array *op_array);
+zend_ast **get_next_defer_call(zend_op_array *op_array);
+void zend_compile_call(znode *result, zend_ast *ast, uint32_t type);
 ZEND_API zend_bool zend_is_compiling(void);
 ZEND_API char *zend_make_compiled_string_description(const char *name);
 ZEND_API void zend_initialize_class_data(zend_class_entry *ce, zend_bool nullify_handlers);
@@ -959,7 +965,6 @@ static zend_always_inline int zend_check_arg_send_type(const zend_function *zf, 
 #define ZEND_GOTO  253
 #define ZEND_BRK   254
 #define ZEND_CONT  255
-
 
 END_EXTERN_C()
 

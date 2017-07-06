@@ -42,7 +42,7 @@ END_EXTERN_C()
 #define ZEND_MOD                               5
 #define ZEND_SL                                6
 #define ZEND_SR                                7
-#define ZEND_CONCAT                            8 // $a . "d"
+#define ZEND_CONCAT                            8
 #define ZEND_BW_OR                             9
 #define ZEND_BW_AND                           10
 #define ZEND_BW_XOR                           11
@@ -57,8 +57,8 @@ END_EXTERN_C()
 #define ZEND_IS_SMALLER_OR_EQUAL              20
 #define ZEND_CAST                             21
 #define ZEND_QM_ASSIGN                        22
-#define ZEND_ASSIGN_ADD                       23 //$a += 3;
-#define ZEND_ASSIGN_SUB                       24 //$a -= 3;
+#define ZEND_ASSIGN_ADD                       23
+#define ZEND_ASSIGN_SUB                       24
 #define ZEND_ASSIGN_MUL                       25
 #define ZEND_ASSIGN_DIV                       26
 #define ZEND_ASSIGN_MOD                       27
@@ -202,5 +202,7 @@ END_EXTERN_C()
 #define ZEND_SPACESHIP                       170
 #define ZEND_DECLARE_ANON_CLASS              171
 #define ZEND_DECLARE_ANON_INHERITED_CLASS    172
+#define ZEND_DEFER_CALL                      173
+#define ZEND_DEFER_CALL_END                  174
 
 #endif

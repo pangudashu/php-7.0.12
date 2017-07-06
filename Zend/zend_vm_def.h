@@ -7995,3 +7995,23 @@ ZEND_VM_C_LABEL(call_trampoline_end):
 }
 
 ZEND_VM_DEFINE_OP(137, ZEND_OP_DATA);
+
+ZEND_VM_HANDLER(173, ZEND_DEFER_CALL, ANY, ANY)
+{
+    USE_OPLINE
+
+    //1) save opcode offset
+    EX(return_opline) = opline + 1;
+
+	//2) set jmp opcode
+	ZEND_VM_SET_OPCODE(OP_JMP_ADDR(opline, opline->op1));
+    ZEND_VM_CONTINUE();
+}
+	
+ZEND_VM_HANDLER(174, ZEND_DEFER_CALL_END, ANY, ANY)
+{
+    USE_OPLINE
+
+	ZEND_VM_SET_OPCODE(EX(return_opline));
+    ZEND_VM_CONTINUE();
+}

@@ -82,6 +82,12 @@ void init_op_array(zend_op_array *op_array, zend_uchar type, int initial_ops_siz
 	op_array->try_catch_array = NULL;
 	op_array->last_brk_cont = 0;
 
+    //added by pangudashu
+    op_array->last_defer = 0;
+    op_array->defer_start_op = 0;
+    op_array->defer_call_array = NULL;
+    //end
+
 	op_array->static_variables = NULL;
 	op_array->last_try_catch = 0;
 
@@ -393,6 +399,9 @@ ZEND_API void destroy_op_array(zend_op_array *op_array)
 	if (op_array->try_catch_array) {
 		efree(op_array->try_catch_array);
 	}
+    if (op_array->defer_call_array) {
+        efree(op_array->defer_call_array);
+    }
 	if (zend_extension_flags & ZEND_EXTENSIONS_HAVE_OP_ARRAY_DTOR) {
 		if (op_array->fn_flags & ZEND_ACC_DONE_PASS_TWO) {
 			zend_llist_apply_with_argument(&zend_extensions, (llist_apply_with_arg_func_t) zend_extension_op_array_dtor_handler, op_array);
@@ -455,6 +464,14 @@ zend_brk_cont_element *get_next_brk_cont_element(zend_op_array *op_array)
 	op_array->last_brk_cont++;
 	op_array->brk_cont_array = erealloc(op_array->brk_cont_array, sizeof(zend_brk_cont_element)*op_array->last_brk_cont);
 	return &op_array->brk_cont_array[op_array->last_brk_cont-1];
+}
+
+//added by pangudashu
+zend_ast **get_next_defer_call(zend_op_array *op_array)
+{
+	op_array->last_defer++;
+	op_array->defer_call_array = erealloc(op_array->defer_call_array, sizeof(zend_ast*)*op_array->last_defer);
+	return &op_array->defer_call_array[op_array->last_defer-1];
 }
 
 static void zend_update_extended_info(zend_op_array *op_array)
@@ -683,7 +700,26 @@ ZEND_API int pass_two(zend_op_array *op_array)
 				if (op_array->fn_flags & ZEND_ACC_GENERATOR) {
 					opline->opcode = ZEND_GENERATOR_RETURN;
 				}
-				break;
+                break;
+            case ZEND_DEFER_CALL: //设置jmp
+                {
+                    uint32_t defer_start = op_array->defer_start_op;
+                    uint32_t skip_defer = op_array->last_defer - opline->op2.num;
+                    zend_op *defer_opline = op_array->opcodes + defer_start;
+                    uint32_t n = 0;
+
+                    while(n <= skip_defer){
+                        if (defer_opline->opcode == ZEND_NOP && defer_opline->op1.var == -2) {
+                            n++;
+                        }
+                        defer_opline++;
+                        defer_start++;
+                    }
+
+                    opline->op1.opline_num = defer_start;
+                    ZEND_PASS_TWO_UPDATE_JMP_TARGET(op_array, opline, opline->op1);
+                }
+                break;
 		}
 		if (opline->op1_type == IS_CONST) {
 			ZEND_PASS_TWO_UPDATE_CONSTANT(op_array, opline->op1);

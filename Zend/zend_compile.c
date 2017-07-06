@@ -2075,7 +2075,7 @@ static void zend_emit_return_type_check(znode *expr, zend_arg_info *return_info)
 
 void zend_emit_final_return(zval *zv) /* {{{ */
 {
-	znode zn;
+	znode zn, defer_zn;
 	zend_op *ret;
 	zend_bool returns_reference = (CG(active_op_array)->fn_flags & ZEND_ACC_RETURN_REFERENCE) != 0;
 
@@ -2090,10 +2090,50 @@ void zend_emit_final_return(zval *zv) /* {{{ */
 		ZVAL_NULL(&zn.u.constant);
 	}
 
-	ret = zend_emit_op(NULL, returns_reference ? ZEND_RETURN_BY_REF : ZEND_RETURN, &zn, NULL);
-	ret->extended_value = -1;
+    //在return前编译ZEND_DEFER_CALL：用于在执行retur前跳转到defer call
+    if (CG(active_op_array)->defer_call_array) {
+        //当前return之前定义的defer数
+        defer_zn.op_type = IS_UNUSED;
+        defer_zn.u.op.num = CG(active_op_array)->last_defer;
+        zend_emit_op(NULL, ZEND_DEFER_CALL, NULL, &defer_zn);
+    }
+
+    ret = zend_emit_op(NULL, returns_reference ? ZEND_RETURN_BY_REF : ZEND_RETURN, &zn, NULL);
+    ret->extended_value = -1;
+
+    zend_emit_defer_call();
 }
 /* }}} */
+
+//编译defer
+//added by pangudashu
+void zend_emit_defer_call()
+{
+    if (!CG(active_op_array)->defer_call_array) {
+        return;
+    }
+
+    zend_ast *call_ast;
+    zend_op *nop;
+    znode result;
+    uint32_t opnum = get_next_op_number(CG(active_op_array));
+    int defer_num  = CG(active_op_array)->last_defer;
+
+    CG(active_op_array)->defer_start_op = opnum;
+
+    while(--defer_num >= 0){
+        call_ast = CG(active_op_array)->defer_call_array[defer_num];
+        if (call_ast == NULL) {
+            continue;
+        }
+        nop = zend_emit_op(NULL, ZEND_NOP, NULL, NULL);
+        nop->op1.var = -2;
+        
+        zend_compile_call(&result, call_ast, BP_VAR_R);
+    }
+    //compile ZEND_DEFER_CALL
+    zend_emit_op(NULL, ZEND_DEFER_CALL_END, NULL, NULL);
+}
 
 static inline zend_bool zend_is_variable(zend_ast *ast) /* {{{ */
 {
@@ -3620,7 +3660,7 @@ void zend_compile_return(zend_ast *ast) /* {{{ */
 	zend_ast *expr_ast = ast->child[0];
 	zend_bool by_ref = (CG(active_op_array)->fn_flags & ZEND_ACC_RETURN_REFERENCE) != 0;
 
-	znode expr_node;
+	znode expr_node, defer_zn;
 	zend_op *opline;
 
 	if (!expr_ast) {
@@ -3644,6 +3684,13 @@ void zend_compile_return(zend_ast *ast) /* {{{ */
 	}
 
 	zend_handle_loops_and_finally();
+
+    //在return前编译ZEND_DEFER_CALL：用于在执行retur前跳转到defer call
+    if (CG(active_op_array)->defer_call_array) {
+        defer_zn.op_type = IS_UNUSED;
+        defer_zn.u.op.num = CG(active_op_array)->last_defer;
+        zend_emit_op(NULL, ZEND_DEFER_CALL, NULL, &defer_zn);
+    }
 
 	opline = zend_emit_op(NULL, by_ref ? ZEND_RETURN_BY_REF : ZEND_RETURN,
 		&expr_node, NULL);
@@ -5054,6 +5101,9 @@ void zend_compile_func_decl(znode *result, zend_ast *ast) /* {{{ */
 
 	zend_do_extended_info();
 	zend_emit_final_return(NULL);
+
+    /* compile defer call function */
+    zend_emit_defer_call();
 
 	pass_two(CG(active_op_array));
 	zend_oparray_context_end(&orig_oparray_context);
@@ -7141,15 +7191,16 @@ void zend_compile_top_stmt(zend_ast *ast) /* {{{ */
 }
 /* }}} */
 
+//编译defer，加入zend_op_array->defer_call_array数组
 void zend_compile_defer_call(zend_ast *ast)
 {
     if(!ast){
         return;
     }
-	zend_ast *call_ast = ast->child[0];
 
-    znode result;
-    zend_compile_var(&result, call_ast, BP_VAR_R);
+    zend_ast **call_ast = NULL;
+    call_ast = get_next_defer_call(CG(active_op_array));
+    *call_ast = ast->child[0];
 }
 
 void zend_compile_stmt(zend_ast *ast) /* {{{ */
