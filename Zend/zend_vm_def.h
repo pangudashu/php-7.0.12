@@ -8000,10 +8000,10 @@ ZEND_VM_HANDLER(173, ZEND_DEFER_CALL, ANY, ANY)
 {
     USE_OPLINE
 
-    //1) save opcode offset
+    //1) 将return指令的位置保存到EX(return_opline)
     EX(return_opline) = opline + 1;
 
-	//2) set jmp opcode
+	//2) 跳转
 	ZEND_VM_SET_OPCODE(OP_JMP_ADDR(opline, opline->op1));
     ZEND_VM_CONTINUE();
 }

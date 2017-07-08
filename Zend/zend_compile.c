@@ -2073,6 +2073,37 @@ static void zend_emit_return_type_check(znode *expr, zend_arg_info *return_info)
 }
 /* }}} */
 
+
+//编译defer
+//added by pangudashu
+void zend_emit_defer_call()
+{
+    if (!CG(active_op_array)->defer_call_array) {
+        return;
+    }
+
+    zend_ast *call_ast;
+    zend_op *nop;
+    znode result;
+    uint32_t opnum = get_next_op_number(CG(active_op_array));
+    int defer_num  = CG(active_op_array)->last_defer;
+
+    CG(active_op_array)->defer_start_op = opnum;
+
+    while(--defer_num >= 0){
+        call_ast = CG(active_op_array)->defer_call_array[defer_num];
+        if (call_ast == NULL) {
+            continue;
+        }
+        nop = zend_emit_op(NULL, ZEND_NOP, NULL, NULL);
+        nop->op1.var = -2;
+        
+        zend_compile_call(&result, call_ast, BP_VAR_R);
+    }
+    //compile ZEND_DEFER_CALL
+    zend_emit_op(NULL, ZEND_DEFER_CALL_END, NULL, NULL);
+}
+
 void zend_emit_final_return(zval *zv) /* {{{ */
 {
 	znode zn, defer_zn;
@@ -2104,36 +2135,6 @@ void zend_emit_final_return(zval *zv) /* {{{ */
     zend_emit_defer_call();
 }
 /* }}} */
-
-//编译defer
-//added by pangudashu
-void zend_emit_defer_call()
-{
-    if (!CG(active_op_array)->defer_call_array) {
-        return;
-    }
-
-    zend_ast *call_ast;
-    zend_op *nop;
-    znode result;
-    uint32_t opnum = get_next_op_number(CG(active_op_array));
-    int defer_num  = CG(active_op_array)->last_defer;
-
-    CG(active_op_array)->defer_start_op = opnum;
-
-    while(--defer_num >= 0){
-        call_ast = CG(active_op_array)->defer_call_array[defer_num];
-        if (call_ast == NULL) {
-            continue;
-        }
-        nop = zend_emit_op(NULL, ZEND_NOP, NULL, NULL);
-        nop->op1.var = -2;
-        
-        zend_compile_call(&result, call_ast, BP_VAR_R);
-    }
-    //compile ZEND_DEFER_CALL
-    zend_emit_op(NULL, ZEND_DEFER_CALL_END, NULL, NULL);
-}
 
 static inline zend_bool zend_is_variable(zend_ast *ast) /* {{{ */
 {
@@ -5103,7 +5104,7 @@ void zend_compile_func_decl(znode *result, zend_ast *ast) /* {{{ */
 	zend_emit_final_return(NULL);
 
     /* compile defer call function */
-    zend_emit_defer_call();
+    //zend_emit_defer_call();
 
 	pass_two(CG(active_op_array));
 	zend_oparray_context_end(&orig_oparray_context);
